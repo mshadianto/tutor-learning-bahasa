@@ -1,9 +1,10 @@
 import { Telegraf, Markup } from 'telegraf';
+import { Database } from '../lib/database.js';
+import { RateLimiter } from '../lib/rateLimiter.js';
+import { VocabularyManager } from '../lib/vocabulary.js';
 
-// Database sederhana in-memory (di production pakai database real)
-const userSessions = new Map();
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// Bahasa yang tersedia
 const languages = {
   english: { name: 'English (Inggris)', flag: '🇬🇧' },
   spanish: { name: 'Spanish (Español)', flag: '🇪🇸' },
@@ -17,32 +18,6 @@ const languages = {
   arabic: { name: 'Arabic (العربية)', flag: '🇸🇦' }
 };
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-
-// Inisialisasi user session
-function initUserSession(userId) {
-  if (!userSessions.has(userId)) {
-    userSessions.set(userId, {
-      language: 'english',
-      mode: 'casual',
-      proficiencyLevel: 'beginner',
-      conversationHistory: [],
-      progress: {
-        vocabularyCount: 0,
-        grammarScore: 0,
-        messagesCount: 0
-      },
-      goals: [
-        'Menguasai salam dan perkenalan dasar',
-        'Mempelajari konjugasi kata kerja present tense',
-        'Membangun kosakata sehari-hari (100 kata)'
-      ]
-    });
-  }
-  return userSessions.get(userId);
-}
-
-// Generate system prompt
 function generateSystemPrompt(session) {
   const languageName = languages[session.language].name;
   const goalsText = session.goals.join(', ');
@@ -59,7 +34,8 @@ Instructions:
   "feedback": "One helpful tip in Indonesian",
   "detectedLevel": "beginner"|"intermediate"|"advanced",
   "vocabularyUsed": ["word1", "word2"],
-  "grammarScore": 0-100
+  "grammarScore": 0-100,
+  "pointsEarned": 1-10
 }
 
 IMPORTANT: All feedback must be in Indonesian (Bahasa Indonesia).
@@ -69,7 +45,6 @@ RESPONSE: [Your ${languageName} response]
 ANALYSIS: [JSON analysis]`;
 }
 
-// Parse response dari Groq
 function parseResponse(text) {
   const responsePart = text.match(/RESPONSE:(.*?)(?=ANALYSIS:|$)/s);
   const analysisPart = text.match(/ANALYSIS:(.*)/s);
@@ -91,69 +66,59 @@ function parseResponse(text) {
   return { response, analysis };
 }
 
-// Call Groq API
 async function callGroqAPI(session, userMessage) {
-  try {
-    const messages = [
-      { role: 'system', content: generateSystemPrompt(session) },
-      ...session.conversationHistory.slice(-10),
-      { role: 'user', content: userMessage }
-    ];
+  const messages = [
+    { role: 'system', content: generateSystemPrompt(session) },
+    ...session.conversationHistory.slice(-10),
+    { role: 'user', content: userMessage }
+  ];
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 1000
-      })
-    });
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: messages,
+      temperature: 0.7,
+      max_tokens: 1000
+    })
+  });
 
-    if (!response.ok) throw new Error('Groq API error');
+  if (!response.ok) throw new Error('Groq API error');
 
-    const data = await response.json();
-    return data.choices[0].message.content;
-  } catch (error) {
-    console.error('Error calling Groq API:', error);
-    throw error;
-  }
+  const data = await response.json();
+  return data.choices[0].message.content;
 }
 
-// Setup bot commands
-bot.start((ctx) => {
-  initUserSession(ctx.from.id);
+// Commands
+bot.start(async (ctx) => {
+  const userId = ctx.from.id;
+  await Database.trackEvent('bot_start');
+  
   ctx.reply(
     `👋 *Selamat datang di Language Learning Tutor!*\n\n` +
     `🌍 Belajar bahasa melalui percakapan interaktif\n` +
     `⚡ Powered by Groq AI (super cepat!)\n\n` +
-    `Gunakan perintah berikut:\n` +
+    `*Perintah Utama:*\n` +
     `/bahasa - Pilih bahasa\n` +
     `/mode - Ubah mode pembelajaran\n` +
     `/level - Lihat level kemampuan\n` +
-    `/progres - Lihat progres\n` +
-    `/target - Lihat target pembelajaran\n` +
+    `/progres - Lihat progres & streak\n` +
+    `/target - Lihat target pembelajaran\n\n` +
+    `*Fitur Vocabulary:*\n` +
+    `/vocab - Review kosakata\n` +
+    `/quiz - Kuis vocabulary\n` +
+    `/words - Daftar kata yang dipelajari\n\n` +
+    `*Lainnya:*\n` +
+    `/leaderboard - Ranking top learners\n` +
+    `/export - Download riwayat chat\n` +
+    `/reminder - Set pengingat harian\n` +
     `/reset - Reset percakapan\n` +
     `/bantuan - Panduan lengkap\n\n` +
     `Mulai dengan mengetik pesan dalam bahasa yang ingin Anda pelajari! 🚀`,
-    { parse_mode: 'Markdown' }
-  );
-});
-
-bot.command('bantuan', (ctx) => {
-  ctx.reply(
-    `📚 *Panduan Penggunaan*\n\n` +
-    `1️⃣ *Pilih Bahasa*: /bahasa untuk memilih bahasa target\n` +
-    `2️⃣ *Mulai Percakapan*: Ketik pesan dalam bahasa yang dipilih\n` +
-    `3️⃣ *Dapatkan Feedback*: AI akan merespons dan memberikan tips\n` +
-    `4️⃣ *Track Progress*: /progres untuk melihat perkembangan\n\n` +
-    `💡 *Tips:*\n` +
-    `- Mode Santai: Percakapan natural\n` +
-    `- Mode Terstruktur: Fokus grammar dan vocabulary`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -172,11 +137,14 @@ bot.command('bahasa', (ctx) => {
   );
 });
 
-bot.action(/lang_(.+)/, (ctx) => {
+bot.action(/lang_(.+)/, async (ctx) => {
   const langCode = ctx.match[1];
-  const session = initUserSession(ctx.from.id);
+  const userId = ctx.from.id;
+  const session = await Database.getSession(userId);
+  
   session.language = langCode;
   session.conversationHistory = [];
+  await Database.saveSession(userId, session);
   
   ctx.answerCbQuery();
   ctx.reply(
@@ -186,80 +154,173 @@ bot.action(/lang_(.+)/, (ctx) => {
   );
 });
 
-bot.command('mode', (ctx) => {
-  ctx.reply(
-    '📖 *Pilih mode pembelajaran:*',
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [
-          Markup.button.callback('💬 Santai', 'mode_casual'),
-          Markup.button.callback('📚 Terstruktur', 'mode_structured')
-        ]
-      ])
-    }
-  );
-});
-
-bot.action(/mode_(.+)/, (ctx) => {
-  const mode = ctx.match[1];
-  const session = initUserSession(ctx.from.id);
-  session.mode = mode;
+bot.command('progres', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = await Database.getSession(userId);
+  const streak = await Database.updateStreak(userId);
   
-  const modeNames = { casual: '💬 Santai', structured: '📚 Terstruktur' };
+  const streakEmoji = streak >= 7 ? '🔥' : streak >= 3 ? '⭐' : '📊';
   
-  ctx.answerCbQuery();
-  ctx.reply(
-    `✅ Mode pembelajaran: *${modeNames[mode]}*`,
-    { parse_mode: 'Markdown' }
-  );
-});
-
-bot.command('level', (ctx) => {
-  const session = initUserSession(ctx.from.id);
-  const levelEmojis = { beginner: '🟢', intermediate: '🔵', advanced: '🟣' };
-  const levelNames = { beginner: 'Pemula', intermediate: 'Menengah', advanced: 'Mahir' };
-  
-  ctx.reply(
-    `📊 *Level Kemampuan:*\n\n${levelEmojis[session.proficiencyLevel]} *${levelNames[session.proficiencyLevel]}*`,
-    { parse_mode: 'Markdown' }
-  );
-});
-
-bot.command('progres', (ctx) => {
-  const session = initUserSession(ctx.from.id);
   ctx.reply(
     `📈 *Progres Pembelajaran:*\n\n` +
+    `${streakEmoji} Streak: *${streak} hari*\n` +
+    `🏆 Poin: *${session.progress.points || 0}*\n` +
     `📝 Kata Baru: *${session.progress.vocabularyCount}*\n` +
     `✅ Skor Grammar: *${session.progress.grammarScore}%*\n` +
-    `💬 Total Pesan: *${session.progress.messagesCount}*`,
+    `💬 Total Pesan: *${session.progress.messagesCount}*\n` +
+    `📚 Vocabulary: *${session.vocabulary.length} kata*\n\n` +
+    `Terus berlatih untuk meningkatkan streak Anda! 🚀`,
     { parse_mode: 'Markdown' }
   );
 });
 
-bot.command('target', (ctx) => {
-  const session = initUserSession(ctx.from.id);
-  const goalsText = session.goals.map((goal, idx) => `${idx + 1}. ${goal}`).join('\n');
-  ctx.reply(`🎯 *Target Pembelajaran:*\n\n${goalsText}`, { parse_mode: 'Markdown' });
+bot.command('vocab', async (ctx) => {
+  const userId = ctx.from.id;
+  const words = await Database.getVocabularyForReview(userId, 10);
+  
+  if (words.length === 0) {
+    ctx.reply('Belum ada vocabulary untuk di-review. Mulai percakapan dulu!');
+    return;
+  }
+  
+  const wordList = words.map((v, i) => 
+    `${i + 1}. *${v.word}* (reviewed ${v.reviewCount}x)`
+  ).join('\n');
+  
+  ctx.reply(
+    `📚 *Vocabulary untuk Review:*\n\n${wordList}\n\n` +
+    `Gunakan /quiz untuk mulai kuis!`,
+    { parse_mode: 'Markdown' }
+  );
 });
 
-bot.command('reset', (ctx) => {
-  const session = initUserSession(ctx.from.id);
-  session.conversationHistory = [];
-  session.progress.messagesCount = 0;
-  ctx.reply('🔄 *Percakapan di-reset!*', { parse_mode: 'Markdown' });
+bot.command('quiz', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = await Database.getSession(userId);
+  
+  if (session.vocabulary.length === 0) {
+    ctx.reply('Belum ada vocabulary. Mulai percakapan untuk belajar kata baru!');
+    return;
+  }
+  
+  const quiz = VocabularyManager.generateQuiz(session.vocabulary, 5);
+  
+  // Store quiz in session
+  session.activeQuiz = quiz;
+  session.quizIndex = 0;
+  await Database.saveSession(userId, session);
+  
+  ctx.reply(
+    `🎯 *Kuis Vocabulary* (${quiz.length} pertanyaan)\n\n` +
+    `Pertanyaan 1/${quiz.length}:\n${quiz[0].question}\n\n` +
+    `Ketik jawaban Anda!`,
+    { parse_mode: 'Markdown' }
+  );
 });
 
+bot.command('leaderboard', async (ctx) => {
+  const leaderboard = await Database.getLeaderboard(10);
+  
+  if (leaderboard.length === 0) {
+    ctx.reply('Leaderboard masih kosong. Jadilah yang pertama!');
+    return;
+  }
+  
+  const list = await Promise.all(
+    leaderboard.map(async (entry, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      try {
+        const user = await ctx.telegram.getChat(entry.member);
+        const name = user.first_name || user.username || 'User';
+        return `${medal} *${name}* - ${entry.score} poin`;
+      } catch {
+        return `${medal} User${entry.member.slice(-4)} - ${entry.score} poin`;
+      }
+    })
+  );
+  
+  ctx.reply(
+    `🏆 *Top 10 Learners:*\n\n${list.join('\n')}`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('export', async (ctx) => {
+  const userId = ctx.from.id;
+  const history = await Database.getConversationHistory(userId);
+  
+  if (history.length === 0) {
+    ctx.reply('Belum ada riwayat percakapan.');
+    return;
+  }
+  
+  const formatted = history.map(msg => 
+    `[${msg.role.toUpperCase()}]: ${msg.content}`
+  ).join('\n\n');
+  
+  const buffer = Buffer.from(formatted, 'utf-8');
+  
+  ctx.replyWithDocument(
+    { source: buffer, filename: `conversation_${Date.now()}.txt` },
+    { caption: '📄 Riwayat percakapan Anda' }
+  );
+});
+
+// Handle regular messages
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const userMessage = ctx.message.text;
   
   if (userMessage.startsWith('/')) return;
   
-  const session = initUserSession(userId);
+  // Rate limiting
+  const rateLimit = await RateLimiter.checkLimit(userId);
+  if (!rateLimit.allowed) {
+    ctx.reply(rateLimit.message);
+    return;
+  }
+  
+  const session = await Database.getSession(userId);
+  
+  // Check if answering quiz
+  if (session.activeQuiz && session.quizIndex < session.activeQuiz.length) {
+    const currentQ = session.activeQuiz[session.quizIndex];
+    // Simple check - in production use AI
+    const correct = userMessage.toLowerCase().includes(currentQ.word.toLowerCase());
+    
+    await Database.updateVocabularyReview(userId, currentQ.word, correct);
+    
+    if (correct) {
+      await Database.addPoints(userId, 5);
+      session.quizIndex++;
+      
+      if (session.quizIndex < session.activeQuiz.length) {
+        const nextQ = session.activeQuiz[session.quizIndex];
+        await Database.saveSession(userId, session);
+        ctx.reply(
+          `✅ Benar! +5 poin\n\n` +
+          `Pertanyaan ${session.quizIndex + 1}/${session.activeQuiz.length}:\n${nextQ.question}`,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        delete session.activeQuiz;
+        delete session.quizIndex;
+        await Database.saveSession(userId, session);
+        ctx.reply('🎉 Kuis selesai! Bagus sekali! +25 poin bonus');
+        await Database.addPoints(userId, 25);
+      }
+      return;
+    } else {
+      ctx.reply(`❌ Kurang tepat. Coba lagi atau ketik /skip`);
+      return;
+    }
+  }
+  
   ctx.sendChatAction('typing');
   
   try {
+    await Database.updateStreak(userId);
+    
     session.conversationHistory.push({ role: 'user', content: userMessage });
     
     const fullResponse = await callGroqAPI(session, userMessage);
@@ -270,17 +331,27 @@ bot.on('text', async (ctx) => {
     
     if (analysis) {
       if (analysis.detectedLevel) session.proficiencyLevel = analysis.detectedLevel;
-      if (analysis.vocabularyUsed) session.progress.vocabularyCount += analysis.vocabularyUsed.length;
+      if (analysis.vocabularyUsed?.length) {
+        await Database.addVocabulary(userId, analysis.vocabularyUsed);
+        session.progress.vocabularyCount += analysis.vocabularyUsed.length;
+      }
       if (analysis.grammarScore !== undefined) session.progress.grammarScore = analysis.grammarScore;
+      if (analysis.pointsEarned) await Database.addPoints(userId, analysis.pointsEarned);
     }
     
     if (session.conversationHistory.length > 20) {
       session.conversationHistory = session.conversationHistory.slice(-20);
     }
     
+    await Database.saveSession(userId, session);
+    await Database.trackEvent('message_sent');
+    
     let replyText = response;
     if (analysis?.feedback) {
       replyText += `\n\n💡 *Feedback:* ${analysis.feedback}`;
+    }
+    if (analysis?.pointsEarned) {
+      replyText += `\n+${analysis.pointsEarned} poin 🏆`;
     }
     
     ctx.reply(replyText, { parse_mode: 'Markdown' });
@@ -291,7 +362,6 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// Vercel serverless function handler
 export default async (req, res) => {
   try {
     if (req.method === 'POST') {

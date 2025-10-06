@@ -18,6 +18,22 @@ const languages = {
   arabic: { name: 'Arabic (العربية)', flag: '🇸🇦' }
 };
 
+function getLanguageCode(langKey) {
+  const codes = {
+    english: 'en',
+    spanish: 'es',
+    french: 'fr',
+    german: 'de',
+    japanese: 'ja',
+    italian: 'it',
+    portuguese: 'pt',
+    mandarin: 'zh',
+    korean: 'ko',
+    arabic: 'ar'
+  };
+  return codes[langKey];
+}
+
 function generateSystemPrompt(session) {
   const languageName = languages[session.language].name;
   const goalsText = session.goals.join(', ');
@@ -93,48 +109,48 @@ async function callGroqAPI(session, userMessage) {
   return data.choices[0].message.content;
 }
 
-// Commands
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
   await Database.trackEvent('bot_start');
   
   ctx.reply(
-    `👋 *Selamat datang di Language Learning Tutor!*\n\n` +
+    `👋 Selamat datang di Language Learning Tutor!\n\n` +
     `🌍 Belajar bahasa melalui percakapan interaktif\n` +
-    `⚡ Powered by Groq AI (super cepat!)\n\n` +
-    `*Perintah Utama:*\n` +
+    `⚡ Powered by Groq AI (super cepat!)\n` +
+    `🎤 Support voice messages untuk latihan pronunciation!\n\n` +
+    `Perintah Utama:\n` +
     `/bahasa - Pilih bahasa\n` +
     `/mode - Ubah mode pembelajaran\n` +
     `/level - Lihat level kemampuan\n` +
     `/progres - Lihat progres & streak\n` +
     `/target - Lihat target pembelajaran\n\n` +
-    `*Fitur Vocabulary:*\n` +
+    `Fitur Vocabulary:\n` +
     `/vocab - Review kosakata\n` +
     `/quiz - Kuis vocabulary\n` +
     `/words - Daftar kata yang dipelajari\n\n` +
-    `*Lainnya:*\n` +
+    `Lainnya:\n` +
     `/leaderboard - Ranking top learners\n` +
     `/export - Download riwayat chat\n` +
-    `/reminder - Set pengingat harian\n` +
     `/reset - Reset percakapan\n` +
     `/bantuan - Panduan lengkap\n\n` +
-    `Mulai dengan mengetik pesan dalam bahasa yang ingin Anda pelajari! 🚀`,
+    `💬 Ketik pesan atau 🎤 kirim voice message dalam bahasa target!`,
     { parse_mode: 'Markdown' }
   );
 });
 
 bot.command('bantuan', (ctx) => {
   ctx.reply(
-    `📚 *Panduan Penggunaan*\n\n` +
-    `1️⃣ *Pilih Bahasa*: /bahasa untuk memilih bahasa target\n` +
-    `2️⃣ *Mulai Percakapan*: Ketik pesan dalam bahasa yang dipilih\n` +
-    `3️⃣ *Dapatkan Feedback*: AI akan merespons dan memberikan tips\n` +
-    `4️⃣ *Track Progress*: /progres untuk melihat perkembangan\n\n` +
-    `💡 *Tips:*\n` +
+    `📚 Panduan Penggunaan\n\n` +
+    `1. Pilih Bahasa: /bahasa untuk memilih bahasa target\n` +
+    `2. Mulai Percakapan: Ketik pesan atau kirim voice message\n` +
+    `3. Dapatkan Feedback: AI akan merespons dan memberikan tips\n` +
+    `4. Track Progress: /progres untuk melihat perkembangan\n\n` +
+    `💡 Tips:\n` +
     `- Mode Santai: Percakapan natural\n` +
     `- Mode Terstruktur: Fokus grammar dan vocabulary\n` +
     `- Gunakan /quiz untuk latihan vocabulary\n` +
-    `- Jaga streak harian untuk bonus poin!`,
+    `- Jaga streak harian untuk bonus poin!\n` +
+    `- Voice message dapat +2 bonus poin!`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -147,10 +163,10 @@ bot.command('bahasa', (ctx) => {
     )];
   });
 
-  ctx.reply(
-    '🌍 *Pilih bahasa yang ingin Anda pelajari:*',
-    { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) }
-  );
+  ctx.reply('🌍 Pilih bahasa yang ingin Anda pelajari:', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard(buttons)
+  });
 });
 
 bot.action(/lang_(.+)/, async (ctx) => {
@@ -164,25 +180,22 @@ bot.action(/lang_(.+)/, async (ctx) => {
   
   ctx.answerCbQuery();
   ctx.reply(
-    `✅ Bahasa dipilih: ${languages[langCode].flag} *${languages[langCode].name}*\n\n` +
+    `✅ Bahasa dipilih: ${languages[langCode].flag} ${languages[langCode].name}\n\n` +
     `Mulai percakapan dalam ${languages[langCode].name}!`,
     { parse_mode: 'Markdown' }
   );
 });
 
 bot.command('mode', (ctx) => {
-  ctx.reply(
-    '📖 *Pilih mode pembelajaran:*',
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [
-          Markup.button.callback('💬 Santai', 'mode_casual'),
-          Markup.button.callback('📚 Terstruktur', 'mode_structured')
-        ]
-      ])
-    }
-  );
+  ctx.reply('📖 Pilih mode pembelajaran:', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [
+        Markup.button.callback('💬 Santai', 'mode_casual'),
+        Markup.button.callback('📚 Terstruktur', 'mode_structured')
+      ]
+    ])
+  });
 });
 
 bot.action(/mode_(.+)/, async (ctx) => {
@@ -195,10 +208,7 @@ bot.action(/mode_(.+)/, async (ctx) => {
   const modeNames = { casual: '💬 Santai', structured: '📚 Terstruktur' };
   
   ctx.answerCbQuery();
-  ctx.reply(
-    `✅ Mode pembelajaran: *${modeNames[mode]}*`,
-    { parse_mode: 'Markdown' }
-  );
+  ctx.reply(`✅ Mode pembelajaran: ${modeNames[mode]}`, { parse_mode: 'Markdown' });
 });
 
 bot.command('level', async (ctx) => {
@@ -208,7 +218,7 @@ bot.command('level', async (ctx) => {
   const levelNames = { beginner: 'Pemula', intermediate: 'Menengah', advanced: 'Mahir' };
   
   ctx.reply(
-    `📊 *Level Kemampuan:*\n\n${levelEmojis[session.proficiencyLevel]} *${levelNames[session.proficiencyLevel]}*\n\n` +
+    `📊 Level Kemampuan:\n\n${levelEmojis[session.proficiencyLevel]} ${levelNames[session.proficiencyLevel]}\n\n` +
     `Level akan diupdate otomatis berdasarkan percakapan Anda.`,
     { parse_mode: 'Markdown' }
   );
@@ -222,14 +232,14 @@ bot.command('progres', async (ctx) => {
   const streakEmoji = streak >= 7 ? '🔥' : streak >= 3 ? '⭐' : '📊';
   
   ctx.reply(
-    `📈 *Progres Pembelajaran:*\n\n` +
-    `${streakEmoji} Streak: *${streak} hari*\n` +
-    `🏆 Poin: *${session.progress.points || 0}*\n` +
-    `📝 Kata Baru: *${session.progress.vocabularyCount}*\n` +
-    `✅ Skor Grammar: *${session.progress.grammarScore}%*\n` +
-    `💬 Total Pesan: *${session.progress.messagesCount}*\n` +
-    `📚 Vocabulary: *${session.vocabulary.length} kata*\n\n` +
-    `Terus berlatih untuk meningkatkan streak Anda! 🚀`,
+    `📈 Progres Pembelajaran:\n\n` +
+    `${streakEmoji} Streak: ${streak} hari\n` +
+    `🏆 Poin: ${session.progress.points || 0}\n` +
+    `📝 Kata Baru: ${session.progress.vocabularyCount}\n` +
+    `✅ Skor Grammar: ${session.progress.grammarScore}%\n` +
+    `💬 Total Pesan: ${session.progress.messagesCount}\n` +
+    `📚 Vocabulary: ${session.vocabulary.length} kata\n\n` +
+    `Terus berlatih untuk meningkatkan streak Anda!`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -238,7 +248,7 @@ bot.command('target', async (ctx) => {
   const userId = ctx.from.id;
   const session = await Database.getSession(userId);
   const goalsText = session.goals.map((goal, idx) => `${idx + 1}. ${goal}`).join('\n');
-  ctx.reply(`🎯 *Target Pembelajaran:*\n\n${goalsText}\n\nPercakapan akan disesuaikan dengan target Anda.`, { parse_mode: 'Markdown' });
+  ctx.reply(`🎯 Target Pembelajaran:\n\n${goalsText}\n\nPercakapan akan disesuaikan dengan target Anda.`, { parse_mode: 'Markdown' });
 });
 
 bot.command('vocab', async (ctx) => {
@@ -251,11 +261,11 @@ bot.command('vocab', async (ctx) => {
   }
   
   const wordList = words.map((v, i) => 
-    `${i + 1}. *${v.word}* (reviewed ${v.reviewCount}x)`
+    `${i + 1}. ${v.word} (reviewed ${v.reviewCount}x)`
   ).join('\n');
   
   ctx.reply(
-    `📚 *Vocabulary untuk Review:*\n\n${wordList}\n\n` +
+    `📚 Vocabulary untuk Review:\n\n${wordList}\n\n` +
     `Gunakan /quiz untuk mulai kuis!`,
     { parse_mode: 'Markdown' }
   );
@@ -274,17 +284,17 @@ bot.command('words', async (ctx) => {
     const mastered = session.vocabulary.filter(v => v.mastered);
     const learning = session.vocabulary.filter(v => !v.mastered);
     
-    let message = `📚 *Vocabulary Anda*\n\n`;
+    let message = `📚 Vocabulary Anda\n\n`;
     
     if (mastered.length > 0) {
-      message += `✅ *Dikuasai (${mastered.length}):*\n`;
+      message += `✅ Dikuasai (${mastered.length}):\n`;
       message += mastered.slice(0, 10).map(v => `• ${v.word}`).join('\n');
       if (mastered.length > 10) message += `\n... dan ${mastered.length - 10} lagi`;
       message += '\n\n';
     }
     
     if (learning.length > 0) {
-      message += `📖 *Sedang Dipelajari (${learning.length}):*\n`;
+      message += `📖 Sedang Dipelajari (${learning.length}):\n`;
       message += learning.slice(0, 10).map(v => `• ${v.word}`).join('\n');
       if (learning.length > 10) message += `\n... dan ${learning.length - 10} lagi`;
     }
@@ -314,7 +324,7 @@ bot.command('quiz', async (ctx) => {
   await Database.saveSession(userId, session);
   
   ctx.reply(
-    `🎯 *Kuis Vocabulary* (${quiz.length} pertanyaan)\n\n` +
+    `🎯 Kuis Vocabulary (${quiz.length} pertanyaan)\n\n` +
     `Pertanyaan 1/${quiz.length}:\n${quiz[0].question}\n\n` +
     `Ketik jawaban Anda!`,
     { parse_mode: 'Markdown' }
@@ -339,7 +349,7 @@ bot.command('leaderboard', async (ctx) => {
         try {
           const user = await ctx.telegram.getChat(userId);
           const name = user.first_name || user.username || 'User';
-          return `${medal} *${name}* - ${score} poin`;
+          return `${medal} ${name} - ${score} poin`;
         } catch (error) {
           const userIdStr = String(userId);
           const shortId = userIdStr.length > 4 ? userIdStr.slice(-4) : userIdStr;
@@ -349,8 +359,8 @@ bot.command('leaderboard', async (ctx) => {
     );
     
     ctx.reply(
-      `🏆 *Top 10 Learners:*\n\n${list.join('\n')}\n\n` +
-      `Dapatkan poin dengan berlatih setiap hari! 💪`,
+      `🏆 Top 10 Learners:\n\n${list.join('\n')}\n\n` +
+      `Dapatkan poin dengan berlatih setiap hari!`,
       { parse_mode: 'Markdown' }
     );
   } catch (error) {
@@ -387,11 +397,7 @@ bot.command('reset', async (ctx) => {
   session.progress.messagesCount = 0;
   await Database.saveSession(userId, session);
   
-  ctx.reply('🔄 *Percakapan di-reset!*\n\nMulai percakapan baru.', { parse_mode: 'Markdown' });
-});
-
-bot.command('reminder', (ctx) => {
-  ctx.reply('⏰ Fitur reminder sedang dalam pengembangan. Coming soon!');
+  ctx.reply('🔄 Percakapan di-reset!\n\nMulai percakapan baru.', { parse_mode: 'Markdown' });
 });
 
 bot.command('skip', async (ctx) => {
@@ -406,7 +412,105 @@ bot.command('skip', async (ctx) => {
   }
 });
 
-// Handle regular messages
+// Handle voice messages
+bot.on('voice', async (ctx) => {
+  const userId = ctx.from.id;
+  
+  try {
+    ctx.sendChatAction('typing');
+    
+    const rateLimit = await RateLimiter.checkLimit(userId, 10, 60);
+    if (!rateLimit.allowed) {
+      ctx.reply(`🎤 ${rateLimit.message}`);
+      return;
+    }
+    
+    const voiceFile = await ctx.telegram.getFile(ctx.message.voice.file_id);
+    const voiceUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${voiceFile.file_path}`;
+    
+    const audioResponse = await fetch(voiceUrl);
+    const audioBuffer = await audioResponse.arrayBuffer();
+    
+    const formData = new FormData();
+    formData.append('file', new Blob([audioBuffer], { type: 'audio/ogg' }), 'voice.ogg');
+    formData.append('model', 'whisper-large-v3');
+    formData.append('response_format', 'json');
+    
+    const session = await Database.getSession(userId);
+    const languageCode = getLanguageCode(session.language);
+    
+    if (languageCode) {
+      formData.append('language', languageCode);
+    }
+    
+    const transcribeResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: formData
+    });
+    
+    if (!transcribeResponse.ok) {
+      throw new Error('Transcription failed');
+    }
+    
+    const transcription = await transcribeResponse.json();
+    const userMessage = transcription.text;
+    
+    if (!userMessage || userMessage.trim().length === 0) {
+      ctx.reply('🎤 Maaf, tidak bisa mendengar dengan jelas. Coba lagi dengan suara lebih jelas.');
+      return;
+    }
+    
+    await ctx.reply(`🎤 Anda bilang: "${userMessage}"`, { parse_mode: 'Markdown' });
+    
+    await Database.updateStreak(userId);
+    
+    session.conversationHistory.push({ role: 'user', content: userMessage });
+    
+    const fullResponse = await callGroqAPI(session, userMessage);
+    const { response, analysis } = parseResponse(fullResponse);
+    
+    session.conversationHistory.push({ role: 'assistant', content: response });
+    session.progress.messagesCount++;
+    
+    if (analysis) {
+      if (analysis.detectedLevel) session.proficiencyLevel = analysis.detectedLevel;
+      if (analysis.vocabularyUsed?.length) {
+        await Database.addVocabulary(userId, analysis.vocabularyUsed);
+        session.progress.vocabularyCount += analysis.vocabularyUsed.length;
+      }
+      if (analysis.grammarScore !== undefined) session.progress.grammarScore = analysis.grammarScore;
+      if (analysis.pointsEarned) {
+        await Database.addPoints(userId, analysis.pointsEarned + 2);
+      }
+    }
+    
+    if (session.conversationHistory.length > 20) {
+      session.conversationHistory = session.conversationHistory.slice(-20);
+    }
+    
+    await Database.saveSession(userId, session);
+    await Database.trackEvent('voice_message');
+    
+    let replyText = `💬 ${response}`;
+    if (analysis?.feedback) {
+      replyText += `\n\n💡 Feedback: ${analysis.feedback}`;
+    }
+    if (analysis?.pointsEarned) {
+      replyText += `\n+${analysis.pointsEarned + 2} poin (+2 bonus voice!)`;
+    }
+    
+    ctx.reply(replyText, { parse_mode: 'Markdown' });
+    
+  } catch (error) {
+    console.error('Voice processing error:', error);
+    ctx.reply('❌ Maaf, gagal memproses pesan suara. Pastikan suara jelas dan coba lagi.');
+  }
+});
+
+// Handle text messages
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const userMessage = ctx.message.text;
@@ -421,7 +525,6 @@ bot.on('text', async (ctx) => {
   
   const session = await Database.getSession(userId);
   
-  // Check if answering quiz
   if (session.activeQuiz && session.quizIndex < session.activeQuiz.length) {
     const currentQ = session.activeQuiz[session.quizIndex];
     const correct = userMessage.toLowerCase().includes(currentQ.word.toLowerCase());
@@ -486,10 +589,10 @@ bot.on('text', async (ctx) => {
     
     let replyText = response;
     if (analysis?.feedback) {
-      replyText += `\n\n💡 *Feedback:* ${analysis.feedback}`;
+      replyText += `\n\n💡 Feedback: ${analysis.feedback}`;
     }
     if (analysis?.pointsEarned) {
-      replyText += `\n+${analysis.pointsEarned} poin 🏆`;
+      replyText += `\n+${analysis.pointsEarned} poin`;
     }
     
     ctx.reply(replyText, { parse_mode: 'Markdown' });
